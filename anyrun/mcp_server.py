@@ -226,12 +226,13 @@ async def main():
         return await handler(arguments)
 
     async with stdio_server() as (read, write):
+        from anyrun import __version__ as anyrun_version
         await server.run(
             read,
             write,
             InitializationOptions(
                 server_name="anyrun",
-                server_version="1.0.2",
+                server_version=anyrun_version,
                 capabilities=ServerCapabilities(tools=ToolsCapability(listChanged=False)),
             ),
         )
