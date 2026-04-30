@@ -191,12 +191,16 @@ class TraceStore:
                    ORDER BY MAX(start_time) DESC LIMIT 5"""
             ).fetchall()
 
+            avg_dur = conn.execute(
+                "SELECT AVG(duration_ms) FROM traces"
+            ).fetchone()[0]
+
         return {
             "total": total,
             "success": success,
             "failed": failed,
             "success_rate": round(success / total * 100, 1) if total > 0 else 0,
-            "avg_duration_ms": round(avg_dur, 1) if avg_dur else 0,
+            "avg_duration_ms": round(avg_dur, 1) if avg_dur is not None else 0,
             "top_errors": [{"type": e[0], "count": e[1]} for e in top_errors],
             "recent_sessions": [
                 {"session_id": s[0], "traces": s[1]} for s in recent_sessions
