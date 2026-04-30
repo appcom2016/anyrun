@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>anyrun — AI Agent 的自我进化执行引擎</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #12121a;
+    --bg3: #1a1a26;
+    --border: #2a2a3a;
+    --text: #e1e1e8;
+    --text2: #8888a0;
+    --accent: #6c5ce7;
+    --accent2: #a29bfe;
+    --green: #00e676;
+    --orange: #ff9100;
+    --pink: #ff4081;
+    --wave1: #6c5ce7;
+    --wave2: #a29bfe;
+    --wave3: #00e676;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* Animated Background */
+  .bg-grid {
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(108,92,231,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(108,92,231,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+  }
+  .bg-glow {
+    position: fixed; z-index: 0; pointer-events: none; border-radius: 50%; filter: blur(120px);
+  }
+  .bg-glow-1 { width: 600px; height: 600px; top: -200px; right: -200px; background: radial-gradient(circle, rgba(108,92,231,0.15), transparent); }
+  .bg-glow-2 { width: 500px; height: 500px; bottom: -100px; left: -150px; background: radial-gradient(circle, rgba(0,230,118,0.08), transparent); }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  /* Nav */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(10,10,15,0.8); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 0;
+  }
+  nav .container { display: flex; align-items: center; justify-content: space-between; }
+  nav .logo { font-weight: 700; font-size: 1.15rem; background: linear-gradient(135deg, var(--accent), var(--wave2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  nav .links { display: flex; gap: 28px; font-size: 0.9rem; }
+  nav .links a { color: var(--text2); text-decoration: none; transition: color 0.2s; }
+  nav .links a:hover { color: var(--text); }
+
+  /* Hero */
+  .hero {
+    padding: 160px 0 100px; text-align: center;
+  }
+  .hero .badge {
+    display: inline-block;
+    background: rgba(108,92,231,0.15); color: var(--accent2);
+    border: 1px solid rgba(108,92,231,0.3);
+    padding: 6px 18px; border-radius: 20px; font-size: 0.85rem;
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: clamp(2.8rem, 7vw, 4.5rem); font-weight: 800;
+    background: linear-gradient(135deg, #fff 30%, var(--accent2), var(--green));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    line-height: 1.15; margin-bottom: 20px;
+  }
+  .hero .subtitle {
+    font-size: 1.2rem; color: var(--text2); max-width: 650px; margin: 0 auto 40px;
+    line-height: 1.7;
+  }
+  .hero .actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 32px; border-radius: 10px; font-weight: 600; font-size: 0.95rem;
+    text-decoration: none; transition: all 0.25s; cursor: pointer; border: none;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #8b7cf7);
+    color: #fff; box-shadow: 0 4px 20px rgba(108,92,231,0.3);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(108,92,231,0.5); }
+  .btn-outline {
+    border: 1px solid var(--border); color: var(--text);
+    background: rgba(255,255,255,0.04);
+  }
+  .btn-outline:hover { border-color: var(--accent); background: rgba(108,92,231,0.1); }
+
+  /* Pip install */
+  .install-block {
+    margin-top: 40px;
+    display: inline-block;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 24px; font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    font-size: 0.95rem; color: var(--green);
+  }
+
+  /* Sections */
+  section { padding: 80px 0; }
+  .section-title {
+    font-size: 1.8rem; font-weight: 700; margin-bottom: 12px; text-align: center;
+  }
+  .section-desc {
+    text-align: center; color: var(--text2); font-size: 1rem; max-width: 600px; margin: 0 auto 48px;
+  }
+
+  /* Pipeline */
+  .pipeline {
+    display: flex; align-items: center; justify-content: center; gap: 0;
+    flex-wrap: wrap; margin: 40px 0;
+  }
+  .pipe-step {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 20px; text-align: center; min-width: 130px;
+    position: relative;
+  }
+  .pipe-step .icon { font-size: 1.6rem; margin-bottom: 6px; }
+  .pipe-step .label { font-size: 0.82rem; color: var(--text2); }
+  .pipe-step .label strong { display: block; color: var(--text); font-size: 0.9rem; margin-bottom: 2px; }
+  .pipe-arrow { font-size: 1.3rem; color: var(--accent); padding: 0 8px; }
+
+  /* Feature Grid */
+  .feature-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .feature-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
+    padding: 28px; transition: all 0.25s; position: relative; overflow: hidden;
+  }
+  .feature-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 8px 30px rgba(108,92,231,0.08); }
+  .feature-card .fc-icon { font-size: 1.8rem; margin-bottom: 12px; }
+  .feature-card h3 { font-size: 1.05rem; margin-bottom: 8px; }
+  .feature-card p { font-size: 0.9rem; color: var(--text2); line-height: 1.6; }
+  .feature-card .fc-tag {
+    display: inline-block; margin-top: 12px;
+    background: rgba(108,92,231,0.12); color: var(--accent2);
+    padding: 3px 10px; border-radius: 6px; font-size: 0.78rem;
+  }
+
+  /* Code Blocks */
+  .code-block {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 12px;
+    margin: 16px 0; overflow: hidden;
+  }
+  .code-block .cb-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    font-size: 0.8rem; color: var(--text2);
+  }
+  .code-block .cb-header .lang { font-weight: 600; }
+  .code-block pre {
+    padding: 16px; overflow-x: auto; font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    font-size: 0.85rem; line-height: 1.6; color: var(--text);
+  }
+  .code-block pre .kw { color: var(--accent2); }
+  .code-block pre .str { color: var(--green); }
+  .code-block pre .cm { color: #5a5a7a; }
+  .code-block pre .fn { color: var(--orange); }
+  .code-block pre .num { color: var(--pink); }
+
+  /* CLI Demo */
+  .cli-demo {
+    background: #0d0d18; border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px 24px; font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem; line-height: 1.7; margin: 16px 0;
+  }
+  .cli-demo .prompt { color: var(--green); }
+  .cli-demo .output { color: var(--text2); }
+  .cli-demo .highlight { color: var(--orange); }
+
+  /* Roadmap */
+  .roadmap { max-width: 600px; margin: 0 auto; }
+  .roadmap-item {
+    display: flex; gap: 16px; padding: 16px 0;
+    border-left: 2px solid var(--border);
+    padding-left: 24px; position: relative;
+  }
+  .roadmap-item::before {
+    content: ''; position: absolute; left: -7px; top: 22px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--bg3); border: 2px solid var(--border);
+  }
+  .roadmap-item.done::before { background: var(--green); border-color: var(--green); box-shadow: 0 0 12px rgba(0,230,118,0.3); }
+  .roadmap-item .rm-status { font-size: 0.75rem; font-weight: 600; color: var(--green); min-width: 50px; }
+  .roadmap-item .rm-title { font-weight: 600; font-size: 0.95rem; }
+  .roadmap-item .rm-desc { font-size: 0.85rem; color: var(--text2); margin-top: 4px; }
+
+  /* Architecture Diagram */
+  .arch { text-align: center; margin: 40px 0; }
+  .arch svg { max-width: 100%; height: auto; }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid var(--border); padding: 40px 0;
+    text-align: center; color: var(--text2); font-size: 0.85rem;
+  }
+  footer a { color: var(--accent2); text-decoration: none; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .hero { padding: 120px 0 60px; }
+    nav .links { display: none; }
+    .pipeline { flex-direction: column; gap: 8px; }
+    .pipe-arrow { transform: rotate(90deg); padding: 4px 0; }
+    .feature-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Animations */
+  .fade-in { opacity: 0; transform: translateY(20px); transition: all 0.6s ease; }
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;
+    margin: 48px 0; padding: 32px 0;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  }
+  .stat-item { text-align: center; }
+  .stat-item .num { font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .stat-item .label { font-size: 0.85rem; color: var(--text2); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+
+<!-- Nav -->
+<nav>
+  <div class="container">
+    <div class="logo">anyrun</div>
+    <div class="links">
+      <a href="#features">核心能力</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="#cli">CLI</a>
+      <a href="#roadmap">路线图</a>
+      <a href="https://github.com/appcom2016/anyrun" target="_blank">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <div class="badge">v1.1.1 · MIT License</div>
+    <h1>anyrun</h1>
+    <p class="subtitle">
+      AI Agent 的 Docker 沙箱执行引擎<br>
+      零配置运行代码、全量执行观测、自动模式发现、经验提取与自进化
+    </p>
+    <div class="actions">
+      <a href="#quickstart" class="btn btn-primary">🚀 快速开始</a>
+      <a href="https://github.com/appcom2016/anyrun" class="btn btn-outline" target="_blank">📦 GitHub</a>
+    </div>
+    <div class="install-block">$ pip install anyrun-agent</div>
+  </div>
+</section>
+
+<!-- Pipeline -->
+<div class="container" style="text-align:center;padding:0 0 40px;">
+  <div class="pipeline">
+    <div class="pipe-step">
+      <div class="icon">🤖</div>
+      <div class="label"><strong>Agent 执行代码</strong>Python / Shell</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step" style="border-color:var(--accent);">
+      <div class="icon">📦</div>
+      <div class="label"><strong>anyrun 沙箱</strong>Docker 隔离执行</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step">
+      <div class="icon">📊</div>
+      <div class="label"><strong>自动采集轨迹</strong>SQLite + JSON</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step">
+      <div class="icon">🔍</div>
+      <div class="label"><strong>模式发现</strong>聚类 / 路径 / 异常</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step">
+      <div class="icon">🧠</div>
+      <div class="label"><strong>经验提取</strong>LLM → SKILL.md</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step">
+      <div class="icon">🔄</div>
+      <div class="label"><strong>自进化</strong>升级 / 退化 / 修复</div>
+    </div>
+  </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="container">
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="num">Sandbox.run()</div>
+      <div class="label">一行代码执行</div>
+    </div>
+    <div class="stat-item">
+      <div class="num">SQLite + JSON</div>
+      <div class="label">全量轨迹存储</div>
+    </div>
+    <div class="stat-item">
+      <div class="num">LLM → SKILL.md</div>
+      <div class="label">自动经验提取</div>
+    </div>
+    <div class="stat-item">
+      <div class="num">β→prod→retired</div>
+      <div class="label">技能生命周期</div>
+    </div>
+  </div>
+</div>
+
+<!-- Features -->
+<section id="features">
+  <div class="container">
+    <h2 class="section-title">核心能力</h2>
+    <p class="section-desc">从安全执行到自我进化，anyrun 为 AI Agent 提供完整的基础设施</p>
+    <div class="feature-grid">
+      <div class="feature-card fade-in">
+        <div class="fc-icon">🔒</div>
+        <h3>零配置沙箱</h3>
+        <p>Docker 隔离执行，一行代码 <code>Sandbox.run()</code> 即可运行任意 Python。自动管理容器生命周期，无需手动 docker run。</p>
+        <span class="fc-tag">Sandbox</span>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="fc-icon">📊</div>
+        <h3>全量执行轨迹</h3>
+        <p>每次执行自动采集结果、时长、错误、Traceback。SQLite 索引 + JSON 持久化，支持查询、统计、导出。</p>
+        <span class="fc-tag">ExecutionTrace</span>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="fc-icon">🔍</div>
+        <h3>模式发现引擎</h3>
+        <p>自动识别错误聚类、成功路径和异常模式。基于执行历史分析问题根因，为后续优化提供数据驱动依据。</p>
+        <span class="fc-tag">PatternAnalyzer</span>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="fc-icon">🧠</div>
+        <h3>LLM 经验提取</h3>
+        <p>从已发现的模式中自动提取最佳实践，生成结构化的 SKILL.md 技能文档。包含触发条件、执行步骤、常见陷阱。</p>
+        <span class="fc-tag">ExperienceExtractor</span>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="fc-icon">🔄</div>
+        <h3>自进化闭环</h3>
+        <p>技能自动经历 beta → prod → decayed → retired 生命周期。退化技能自动检测并触发 LLM 修复，形成持续改进闭环。</p>
+        <span class="fc-tag">Evolution</span>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="fc-icon">🔌</div>
+        <h3>MCP 协议集成</h3>
+        <p>原生支持 MCP（Model Context Protocol）服务器。可直接接入 Hermes、Claude Desktop 等 AI Agent 平台。</p>
+        <span class="fc-tag">MCP</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quickstart -->
+<section id="quickstart" style="background:var(--bg2);">
+  <div class="container">
+    <h2 class="section-title">快速开始</h2>
+    <p class="section-desc">两行代码启动 Docker 沙箱，安全执行任意 Python 代码</p>
+
+    <h3 style="margin-bottom:8px;font-size:1.1rem;">📦 安装</h3>
+    <div class="code-block">
+      <div class="cb-header"><span class="lang">Shell</span></div>
+      <pre>pip install anyrun-agent</pre>
+    </div>
+
+    <h3 style="margin:24px 0 8px;font-size:1.1rem;">⚡ 基础使用</h3>
+    <div class="code-block">
+      <div class="cb-header"><span class="lang">Python</span></div>
+      <pre><span class="kw">from</span> anyrun <span class="kw">import</span> Sandbox
+
+<span class="cm"># 零配置，一行代码在 Docker 中安全执行</span>
+<span class="kw">with</span> Sandbox() <span class="kw">as</span> s:
+    result = s.run(<span class="str">"print(1 + 1)"</span>)
+    print(result.data)  <span class="cm"># "2\n"</span></pre>
+    </div>
+
+    <h3 style="margin:24px 0 8px;font-size:1.1rem;">🧪 多会话隔离</h3>
+    <div class="code-block">
+      <div class="cb-header"><span class="lang">Python</span></div>
+      <pre>sandbox = Sandbox()
+
+<span class="cm"># 两个隔离的会话</span>
+sandbox.run(<span class="str">"x = 42"</span>, session_id=<span class="str">"session-a"</span>)
+sandbox.run(<span class="str">"y = 100"</span>, session_id=<span class="str">"session-b"</span>)
+
+<span class="cm"># 会话内文件持久化</span>
+sandbox.run(<span class="str">'open("/app/data.txt","w").write("hello")'</span>)
+sandbox.cleanup_session(<span class="str">"session-a"</span>)</pre>
+    </div>
+
+    <h3 style="margin:24px 0 8px;font-size:1.1rem;">🔧 工具注册与执行</h3>
+    <div class="code-block">
+      <div class="cb-header"><span class="lang">Python</span></div>
+      <pre><span class="kw">from</span> anyrun <span class="kw">import</span> ToolRegistry, Tool
+
+registry = ToolRegistry()
+registry.add_tool(Tool(
+    name=<span class="str">"add_numbers"</span>,
+    description=<span class="str">"对两个数字求和"</span>,
+    parameters={<span class="str">"a"</span>: {<span class="str">"type"</span>: <span class="str">"integer"</span>}, <span class="str">"b"</span>: {<span class="str">"type"</span>: <span class="str">"integer"</span>}},
+    code=<span class="str">"def execute_tool(a: int, b: int):\n    return a + b"</span>,
+))
+
+<span class="cm"># 转换为 OpenAI Function Calling 格式</span>
+tools = [t.to_openai_tool() <span class="kw">for</span> t <span class="kw">in</span> registry.get_tools_info()]</pre>
+    </div>
+  </div>
+</section>
+
+<!-- CLI -->
+<section id="cli">
+  <div class="container">
+    <h2 class="section-title">命令行工具</h2>
+    <p class="section-desc">强大的 CLI 让轨迹查看、模式分析和技能管理触手可及</p>
+
+    <h3 style="margin-bottom:8px;font-size:1.05rem;">📈 执行轨迹</h3>
+    <div class="cli-demo">
+      <span class="prompt">$</span> anyrun traces ls<br>
+      <span class="output">ID              Status   Duration   Session         Error<br>
+      abc1234         OK       42ms       agent-001       -<br>
+      abc1235         FAIL     518ms      agent-002       ZeroDivisionError<br></span><br>
+      <span class="prompt">$</span> anyrun traces stats<br>
+      <span class="output">Total traces:     104<br>
+      Successful:       74 (71.2%)<br>
+      Failed:           30<br>
+      Avg duration:     518.8ms<br><br>
+      Top errors:<br>
+        ZeroDivisionError: 7x<br>
+        ValueError: 3x</span>
+    </div>
+
+    <h3 style="margin:24px 0 8px;font-size:1.05rem;">🔍 模式发现</h3>
+    <div class="cli-demo">
+      <span class="prompt">$</span> anyrun patterns analyze<br>
+      <span class="output">Analyzed 104 traces<br><br>
+      === Error Clusters ===<br>
+        ❌ ZeroDivisionError when dividing by user input<br>
+        ❌ ValueError when int() receives non-numeric string<br></span><br>
+      <span class="prompt">$</span> anyrun patterns ls<br>
+      <span class="output">❌ [pat_001] error_cluster<br>
+         ZeroDivisionError when dividing by user input<br>
+         7次, 5会话, status=active</span>
+    </div>
+
+    <h3 style="margin:24px 0 8px;font-size:1.05rem;">🧠 经验提取与自进化</h3>
+    <div class="cli-demo">
+      <span class="prompt">$</span> anyrun extract<br>
+      <span class="output">Extracting from: [pat_001] error_cluster<br>
+      ✓ Generated: python-int-safe-conversion<br>
+        Steps: 3, Pitfalls: 3<br><br>
+      Generated 2 skills → ~/.anyrun/skills/</span><br><br>
+      <span class="prompt">$</span> anyrun evolution stats<br>
+      <span class="output">Skills tracked: 2<br>
+        beta:    1<br>
+        prod:    1<br>
+        decayed: 0<br>
+        retired: 0<br><br>
+        ✅ python-zero-division-guard (prod)<br>
+           runs=47, rate=92.7%, sessions=5</span>
+    </div>
+  </div>
+</section>
+
+<!-- Architecture -->
+<section style="background:var(--bg2);">
+  <div class="container">
+    <h2 class="section-title">数据架构</h2>
+    <p class="section-desc">本地优先存储，无需外部数据库</p>
+    <div class="cli-demo" style="margin-top:24px;">
+      ~/.anyrun/<br>
+      ├── traces/<br>
+      │   ├── data/          # 执行轨迹 JSON<br>
+      │   ├── index.db       # SQLite 索引<br>
+      │   └── patterns/      # 发现的模式<br>
+      ├── skills/            # 自动提取的技能<br>
+      │   └── &lt;name&gt;/SKILL.md<br>
+      └── evolution/<br>
+          └── evolution.db   # 技能生命周期数据
+    </div>
+  </div>
+</section>
+
+<!-- Roadmap -->
+<section id="roadmap">
+  <div class="container">
+    <h2 class="section-title">路线图</h2>
+    <p class="section-desc">已完成核心闭环，持续演进中</p>
+    <div class="roadmap">
+      <div class="roadmap-item done">
+        <div class="rm-status">✅ 完成</div>
+        <div>
+          <div class="rm-title">Phase 1: 沙箱 & 观测</div>
+          <div class="rm-desc">Docker 沙箱执行 + 全量轨迹采集 + 模式发现引擎 + MCP Server + CLI</div>
+        </div>
+      </div>
+      <div class="roadmap-item done">
+        <div class="rm-status">✅ 完成</div>
+        <div>
+          <div class="rm-title">Phase 2: 经验提取</div>
+          <div class="rm-desc">从模式到 LLM 自动提取最佳实践，生成 SKILL.md 技能文档</div>
+        </div>
+      </div>
+      <div class="roadmap-item done">
+        <div class="rm-status">✅ 完成</div>
+        <div>
+          <div class="rm-title">Phase 3: 自进化闭环</div>
+          <div class="rm-desc">技能生命周期管理（beta → prod → decayed → retired）+ 自动修复退化技能</div>
+        </div>
+      </div>
+      <div class="roadmap-item">
+        <div class="rm-status" style="color:var(--text2);">📋 规划</div>
+        <div>
+          <div class="rm-title">Phase 4: 集体学习网络</div>
+          <div class="rm-desc">跨 Agent 经验共享、技能市场、联邦式持续改进</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <p>anyrun — 为 AI Agent 提供安全、可观测、会进化的执行基础设施</p>
+    <p style="margin-top:8px;">
+      <a href="https://github.com/appcom2016/anyrun" target="_blank">GitHub</a>
+      &nbsp;·&nbsp; MIT License
+      &nbsp;·&nbsp; Built with ❤️
+    </p>
+  </div>
+</footer>
+
+<script>
+  // Intersection Observer for fade-in animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
