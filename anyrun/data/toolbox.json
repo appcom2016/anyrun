@@ -1,0 +1,54 @@
+{
+  "shell": {
+    "name": "shell",
+    "description": "在 Docker 沙箱中执行 shell 命令",
+    "parameters": {
+      "command": {
+        "type": "string",
+        "description": "要执行的 shell 命令"
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "命令执行超时时间，单位秒，默认 30"
+      }
+    },
+    "code": "# -*- coding: utf-8 -*-\nimport subprocess\n\ndef execute_tool(command: str, timeout: int = 30):\n    try:\n        result = subprocess.run(\n            command, \n            shell=True, \n            capture_output=True, \n            text=True, \n            timeout=timeout,\n            encoding='utf-8',\n            errors='ignore'\n        )\n        if result.returncode == 0:\n            return result.stdout\n        else:\n            return f\"错误: {result.stderr}\\n返回码: {result.returncode}\"\n    except subprocess.TimeoutExpired:\n        return \"错误: 命令执行超时\"\n    except Exception as e:\n        return f\"错误: {str(e)}\"",
+    "status": "prod",
+    "version": 2
+  },
+  "create_file": {
+    "name": "create_file",
+    "description": "在沙箱工作区中创建、覆盖或追加文本文件",
+    "parameters": {
+      "filename": {
+        "type": "string",
+        "required": true,
+        "description": "文件名"
+      },
+      "directory": {
+        "type": "string",
+        "required": false,
+        "default": "./",
+        "description": "存放目录"
+      },
+      "content": {
+        "type": "string",
+        "required": true,
+        "description": "文件内容"
+      },
+      "mode": {
+        "type": "string",
+        "required": false,
+        "default": "write",
+        "enum": [
+          "write",
+          "append"
+        ],
+        "description": "写入模式"
+      }
+    },
+    "code": "import os\n\ndef execute_tool(filename: str, content: str, directory: str = \"./\", mode: str = \"write\", encoding: str = \"utf-8\"):\n    os.makedirs(directory, exist_ok=True)\n    file_path = os.path.join(directory, filename)\n    write_mode = 'w' if mode == 'write' else 'a'\n    with open(file_path, write_mode, encoding=encoding) as f:\n        f.write(content)\n    return file_path",
+    "status": "prod",
+    "version": 1
+  }
+}

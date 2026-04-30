@@ -1,1 +1,13 @@
-__pycache__/\n*.pyc\n.eggs/\ndist/\n*.egg-info/\n.pytest_cache/\n.DS_Store
+__pycache__/
+*.pyc
+.eggs/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.DS_Store
+.venv/
+.idea/
+.vscode/
+*.swp
+*.swo

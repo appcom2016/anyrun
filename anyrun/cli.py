@@ -1,0 +1,307 @@
+"""anyrun CLI — 命令行入口
+
+Usage:
+    anyrun traces ls [--errors] [--limit N]
+    anyrun traces show <trace_id>
+    anyrun traces stats
+"""
+
+import argparse
+import sys
+
+
+def cmd_traces_ls(args):
+    from anyrun.tracing.collector import get_store
+
+    store = get_store()
+    traces = store.list(
+        error_only=args.errors,
+        limit=args.limit or 20,
+    )
+
+    if not traces:
+        print("No traces yet. Run some code with Sandbox.run() first.")
+        return
+
+    print(f"{'ID':<14} {'Status':<8} {'Duration':<10} {'Session':<14} {'Error'}")
+    print("-" * 80)
+    for t in traces:
+        status = "OK" if t["success"] else "FAIL"
+        dur = f"{t['duration_ms']:.0f}ms" if t["duration_ms"] else "-"
+        err = t["error_type"] or "-"
+        print(f"{t['trace_id']:<14} {status:<8} {dur:<10} {t['session_id']:<14} {err}")
+
+
+def cmd_traces_show(args):
+    from anyrun.tracing.collector import get_store
+
+    store = get_store()
+    trace = store.get(args.trace_id)
+
+    if trace is None:
+        print(f"Trace not found: {args.trace_id}")
+        return
+
+    print(f"Trace: {trace.trace_id}")
+    print(f"  Session:   {trace.session_id}")
+    print(f"  Status:    {'OK' if trace.success else 'FAIL'}")
+    print(f"  Duration:  {trace.duration_ms}ms")
+    print(f"  Container: {trace.container_id[:12] if trace.container_id else 'N/A'}")
+    print(f"  Image:     {trace.container_image}")
+    if trace.error_type:
+        print(f"  Error:     {trace.error_type}: {trace.error_message}")
+        if trace.traceback:
+            print(f"  Traceback:\n{trace.traceback}")
+    if trace.result_data:
+        preview = trace.result_data[:200]
+        print(f"  Output:    {preview}")
+    print(f"  Code:")
+    for line in trace.input_code.strip().split("\n"):
+        print(f"    {line}")
+
+
+def cmd_patterns_ls(args):
+    from anyrun.tracing.patterns import PatternStore
+
+    store = PatternStore()
+    patterns = store.list()
+
+    if not patterns:
+        print("No patterns yet. Run `anyrun patterns analyze` or accumulate more traces.")
+        return
+
+    for p in patterns:
+        icon = {"error_cluster": "❌", "success_path": "✅", "anomaly": "⚠️"}.get(p.type, "•")
+        print(f"{icon} [{p.pattern_id}] {p.type}")
+        print(f"   {p.description}")
+        print(f"   {p.occurrences}次, {p.affected_sessions}会话, status={p.status}")
+        print()
+
+
+def cmd_patterns_show(args):
+    from anyrun.tracing.patterns import PatternStore
+
+    store = PatternStore()
+    p = store.load(args.pattern_id)
+    if p is None:
+        print(f"Pattern not found: {args.pattern_id}")
+        return
+
+    print(f"Pattern: {p.pattern_id}")
+    print(f"Type:        {p.type}")
+    print(f"Status:      {p.status}")
+    print(f"Description: {p.description}")
+    print(f"Occurrences: {p.occurrences}")
+    print(f"Sessions:    {p.affected_sessions}")
+    print(f"First seen:  {p.first_seen}")
+    print(f"Last seen:   {p.last_seen}")
+    print(f"Samples:     {p.sample_trace_ids}")
+
+
+def cmd_evolution_stats(args):
+    """显示自进化统计"""
+    from anyrun.evolution import get_tracker
+    tracker = get_tracker()
+    stats = tracker.stats()
+
+    print(f"Skills tracked: {stats['total']}")
+    print(f"  beta:    {stats['beta']}")
+    print(f"  prod:    {stats['prod']}")
+    print(f"  decayed: {stats['decayed']}")
+    print(f"  retired: {stats['retired']}")
+    print()
+
+    if stats["skills"]:
+        for s in stats["skills"]:
+            icon = {"beta": "🔶", "prod": "✅", "decayed": "⚠️", "retired": "💤"}.get(s["status"], "•")
+            repair = " [needs repair]" if s.get("needs_repair") else ""
+            print(f"  {icon} {s['name']} ({s['status']})")
+            print(f"     runs={s['total_runs']}, rate={s['success_rate']}%, sessions={s['sessions']}{repair}")
+
+
+def cmd_evolution_repair(args):
+    """修复退化的 skill"""
+    from anyrun.evolution import repair_all_decayed
+    results = repair_all_decayed()
+    print(f"Decayed skills: {results['total']}")
+    print(f"  Repaired: {results['repaired']}")
+    print(f"  Failed:   {results['failed']}")
+    print(f"  Skipped:  {results['skipped']}")
+
+
+def cmd_extract(args):
+    """从模式中自动提取经验"""
+    from anyrun.tracing.patterns import PatternStore
+    from anyrun.tracing.extractor import ExperienceExtractor
+
+    pstore = PatternStore()
+    patterns = pstore.list()
+
+    active = [p for p in patterns if p.status == "active" and p.occurrences >= 3]
+    if not active:
+        print("No active patterns with ≥3 occurrences. Run `anyrun patterns analyze` first.")
+        return
+
+    if args.pattern_id:
+        target = next((p for p in active if p.pattern_id == args.pattern_id), None)
+        if target is None:
+            print(f"Pattern not found: {args.pattern_id}")
+            return
+        active = [target]
+
+    extractor = ExperienceExtractor()
+    skills = []
+
+    for pattern in active:
+        print(f"\n{'='*50}")
+        print(f"Extracting from: [{pattern.pattern_id}] {pattern.type}")
+        print(f"  {pattern.description}")
+        skill = extractor.extract_from_pattern(pattern)
+        if skill:
+            skills.append(skill)
+            print(f"  ✓ Generated: {skill.name}")
+            print(f"    Steps: {len(skill.steps)}, Pitfalls: {len(skill.pitfalls)}")
+
+    print(f"\n{'='*50}")
+    print(f"Generated {len(skills)} skills → ~/.anyrun/skills/")
+    if skills:
+        print("Review them with: ls ~/.anyrun/skills/")
+
+
+def cmd_patterns_analyze(args):
+    from anyrun.tracing.collector import get_store
+    from anyrun.tracing.patterns import PatternAnalyzer, PatternStore
+
+    store = get_store()
+    analyzer = PatternAnalyzer(store)
+    results = analyzer.analyze()
+
+    print(f"Analyzed {results['total_traces']} traces\n")
+
+    print("=== Error Clusters ===")
+    for p in results["error_clusters"]:
+        print(f"  ❌ {p['description']}")
+    if not results["error_clusters"]:
+        print("  (none)")
+
+    print("\n=== Success Paths ===")
+    for p in results["success_paths"]:
+        print(f"  ✅ {p['description']}")
+    if not results["success_paths"]:
+        print("  (none)")
+
+    print("\n=== Anomalies ===")
+    for p in results["anomalies"]:
+        print(f"  ⚠️  {p['description']}")
+    if not results["anomalies"]:
+        print("  (none)")
+
+    # 保存结果
+    pstore = PatternStore()
+    pstore.clear()
+    for p_dict in results["error_clusters"]:
+        from anyrun.tracing.patterns import Pattern
+        pstore.save(Pattern.from_dict(p_dict))
+    for p_dict in results["success_paths"]:
+        from anyrun.tracing.patterns import Pattern
+        pstore.save(Pattern.from_dict(p_dict))
+    for p_dict in results["anomalies"]:
+        from anyrun.tracing.patterns import Pattern
+        pstore.save(Pattern.from_dict(p_dict))
+
+    print(f"\nSaved to ~/.anyrun/traces/patterns/")
+
+
+def cmd_traces_stats(args):
+    from anyrun.tracing.collector import get_store
+
+    store = get_store()
+    stats = store.stats()
+
+    print(f"Total traces:     {stats['total']}")
+    print(f"Successful:       {stats['success']} ({stats['success_rate']}%)")
+    print(f"Failed:           {stats['failed']}")
+    print(f"Avg duration:     {stats['avg_duration_ms']}ms")
+    print()
+
+    if stats["top_errors"]:
+        print("Top errors:")
+        for e in stats["top_errors"]:
+            print(f"  {e['type']}: {e['count']}x")
+        print()
+
+    if stats["recent_sessions"]:
+        print("Recent sessions:")
+        for s in stats["recent_sessions"]:
+            print(f"  {s['session_id']}: {s['traces']} traces")
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="anyrun")
+    sub = parser.add_subparsers(dest="command")
+
+    # traces ls
+    p_ls = sub.add_parser("traces", help="List execution traces")
+    p_ls_sub = p_ls.add_subparsers(dest="subcommand")
+    p_list = p_ls_sub.add_parser("ls", help="List traces")
+    p_list.add_argument("--errors", action="store_true", help="Only show failed")
+    p_list.add_argument("--limit", type=int, default=20)
+
+    p_show = p_ls_sub.add_parser("show", help="Show trace detail")
+    p_show.add_argument("trace_id")
+
+    p_stats = p_ls_sub.add_parser("stats", help="Show trace statistics")
+
+    # patterns
+    p_pat = sub.add_parser("patterns", help="Pattern discovery")
+    p_pat_sub = p_pat.add_subparsers(dest="subcommand")
+    p_pat_ls = p_pat_sub.add_parser("ls", help="List patterns")
+    p_pat_show = p_pat_sub.add_parser("show", help="Show pattern detail")
+    p_pat_show.add_argument("pattern_id")
+    p_pat_analyze = p_pat_sub.add_parser("analyze", help="Run pattern analysis")
+
+    # extract
+    p_ext = sub.add_parser("extract", help="Extract skills from patterns")
+    p_ext.add_argument("--pattern-id", dest="pattern_id", help="Extract from specific pattern")
+
+    # evolution
+    p_evo = sub.add_parser("evolution", help="Skill evolution management")
+    p_evo_sub = p_evo.add_subparsers(dest="subcommand")
+    p_evo_stats = p_evo_sub.add_parser("stats", help="Show evolution statistics")
+    p_evo_repair = p_evo_sub.add_parser("repair", help="Repair decayed skills")
+
+    args = parser.parse_args()
+
+    if args.command == "traces":
+        if args.subcommand == "ls":
+            cmd_traces_ls(args)
+        elif args.subcommand == "show":
+            cmd_traces_show(args)
+        elif args.subcommand == "stats":
+            cmd_traces_stats(args)
+        else:
+            parser.print_help()
+    elif args.command == "patterns":
+        if args.subcommand == "ls":
+            cmd_patterns_ls(args)
+        elif args.subcommand == "show":
+            cmd_patterns_show(args)
+        elif args.subcommand == "analyze":
+            cmd_patterns_analyze(args)
+        else:
+            parser.print_help()
+    elif args.command == "extract":
+        cmd_extract(args)
+    elif args.command == "evolution":
+        if args.subcommand == "stats":
+            cmd_evolution_stats(args)
+        elif args.subcommand == "repair":
+            cmd_evolution_repair(args)
+        else:
+            parser.print_help()
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
