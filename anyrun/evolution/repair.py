@@ -56,7 +56,7 @@ class AutoRepair:
         model: str = "deepseek-v4-flash",
     ):
         self.tracker = tracker or EvolutionTracker()
-        self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
+        self.api_key = api_key if api_key is not None else os.environ.get("DEEPSEEK_API_KEY", "")
         self.base_url = base_url
         self.model = model
         self.skills_dir = Path(os.path.expanduser("~/.anyrun/skills"))

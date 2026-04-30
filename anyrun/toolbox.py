@@ -141,10 +141,11 @@ class Toolbox:
     # ── 内部：持久化 ───────────────────────────────────────
 
     def _load_tools(self):
-        """从 JSON 文件加载工具"""
+        """从 JSON 文件加载工具，如果不存在则初始化默认工具"""
         with self._lock:
             if not os.path.exists(self.storage_path):
-                self.logger.info(f"工具存储文件不存在: {self.storage_path}，启动空工具箱")
+                self.logger.info(f"工具存储文件不存在: {self.storage_path}")
+                self._init_default_tools()
                 return
             try:
                 with open(self.storage_path, "r", encoding="utf-8") as f:
@@ -153,8 +154,54 @@ class Toolbox:
                     self._tools[name] = Tool(**raw)
                 self.logger.info(f"已加载 {len(self._tools)} 个工具")
             except Exception as e:
-                self.logger.error(f"加载工具失败: {e}，启动空工具箱")
-                self._tools = {}
+                self.logger.error(f"加载工具失败: {e}")
+                self._init_default_tools()
+
+    def _init_default_tools(self):
+        """初始化默认工具集"""
+        self._tools["shell"] = Tool(
+            name="shell",
+            description="在 Docker 沙箱中执行 shell 命令",
+            parameters={
+                "command": {"type": "string", "description": "要执行的 shell 命令"},
+                "timeout": {"type": "integer", "description": "超时秒数，默认 30"},
+            },
+            code=(
+                "import subprocess\n"
+                "def execute_tool(command: str, timeout: int = 30):\n"
+                "    try:\n"
+                "        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)\n"
+                '        return r.stdout if r.returncode == 0 else f"错误: {r.stderr}\\n返回码: {r.returncode}"\n'
+                '    except subprocess.TimeoutExpired:\n        return "错误: 命令超时"\n'
+                '    except Exception as e:\n        return f"错误: {str(e)}"\n'
+            ),
+            status="prod",
+            version=1,
+        )
+        self._tools["create_file"] = Tool(
+            name="create_file",
+            description="在沙箱工作区中创建、覆盖或追加文本文件",
+            parameters={
+                "filename": {"type": "string", "required": True, "description": "文件名"},
+                "directory": {"type": "string", "required": False, "default": "./", "description": "存放目录"},
+                "content": {"type": "string", "required": True, "description": "文件内容"},
+                "mode": {"type": "string", "required": False, "default": "write", "enum": ["write", "append"], "description": "写入模式"},
+            },
+            code=(
+                "import os\n"
+                "def execute_tool(filename: str, content: str, directory: str = './', mode: str = 'write', encoding: str = 'utf-8'):\n"
+                "    os.makedirs(directory, exist_ok=True)\n"
+                "    file_path = os.path.join(directory, filename)\n"
+                '    write_mode = "w" if mode == "write" else "a"\n'
+                "    with open(file_path, write_mode, encoding=encoding) as f:\n"
+                "        f.write(content)\n"
+                "    return file_path\n"
+            ),
+            status="prod",
+            version=1,
+        )
+        self._save_tools()
+        self.logger.info("已初始化默认工具集 (shell, create_file)")
 
     def _save_tools(self):
         """持久化工具到 JSON（必须在锁内调用）"""

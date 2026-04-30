@@ -252,7 +252,7 @@ class ExperienceExtractor:
     ):
         self.trace_store = trace_store or TraceStore()
         self.pattern_store = pattern_store or PatternStore()
-        self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
+        self.api_key = api_key if api_key is not None else os.environ.get("DEEPSEEK_API_KEY", "")
         self.base_url = base_url
         self.model = model
         self.skills_dir = Path(os.path.expanduser("~/.anyrun/skills"))

@@ -17,7 +17,7 @@ class EvolutionEngine:
         api_key: Optional[str] = None,
     ):
         self.tracker = tracker or get_tracker()
-        self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
+        self.api_key = api_key if api_key is not None else os.environ.get("DEEPSEEK_API_KEY", "")
 
     def record_skill_use(self, name: str, success: bool, session_id: str = "", trace_id: str = ""):
         """记录一次 skill 使用"""
