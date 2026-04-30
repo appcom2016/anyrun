@@ -6,7 +6,7 @@
 ## 安装
 
 ```bash
-pip install anyrun
+pip install anyrun-agent
 ```
 
 要求：Python 3.10+，Docker 运行中。

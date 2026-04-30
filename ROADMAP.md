@@ -42,7 +42,7 @@ Agent 执行工具 → anyrun 沙箱执行 + 全量轨迹采集    ✅ Phase 1
 - macOS Docker socket 自动检测
 - `with Sandbox() as s:` 上下文管理器
 - `execute_tool()` — 执行 ToolRegistry 注册的工具
-- `pip install anyrun` 即可用
+- `pip install anyrun-agent` 即可用
 
 **执行轨迹自动采集**
 - 每次 `Sandbox.run()` 自动生成 `ExecutionTrace`
