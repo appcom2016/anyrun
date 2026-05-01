@@ -49,7 +49,7 @@ _sandbox: Any = None
 def _get_toolbox():
     global _toolbox
     if _toolbox is None:
-        from anyrun.toolbox import Toolbox
+        from .toolbox import Toolbox
         _toolbox = Toolbox()
     return _toolbox
 
@@ -149,7 +149,7 @@ async def handle_trace_list(arguments: dict) -> list[TextContent]:
     error_only = arguments.get("error_only", False)
 
     try:
-        from anyrun.tracing.collector import get_store
+        from tracing.collector import get_store
         store = get_store()
         traces = await asyncio.to_thread(store.list, error_only=error_only, limit=limit)
         return [TextContent(type="text", text=json.dumps(traces, ensure_ascii=False, indent=2))]
@@ -164,7 +164,7 @@ async def handle_trace_get(arguments: dict) -> list[TextContent]:
         return _text_error("trace_id required")
 
     try:
-        from anyrun.tracing.collector import get_store
+        from tracing.collector import get_store
         store = get_store()
 
         def _get():
@@ -181,7 +181,7 @@ async def handle_trace_get(arguments: dict) -> list[TextContent]:
 async def handle_trace_stats(arguments: dict) -> list[TextContent]:
     """获取统计信息"""
     try:
-        from anyrun.tracing.collector import get_store
+        from tracing.collector import get_store
         store = get_store()
 
         def _stats():
@@ -194,6 +194,60 @@ async def handle_trace_stats(arguments: dict) -> list[TextContent]:
 
 
 # ══════════════════════════════════════════════════════════════
+#                 Session 管理 Handler
+# ══════════════════════════════════════════════════════════════
+
+
+async def handle_session_list(arguments: dict) -> list[TextContent]:
+    """列出所有活跃的沙箱会话及其容器拓扑信息"""
+    sandbox = _get_sandbox()
+    sessions = {}
+    try:
+        from docker.container import ContainerManager
+        mgr = ContainerManager(logger=_get_sandbox().logger)
+        for container in mgr.client.containers.list(
+            filters={"label": "managed_by=container_manager"}
+        ):
+            sid = container.labels.get("session_id", "unknown")
+            tags = container.image.tags
+            sessions[sid] = {
+                "container_id": container.id[:12],
+                "status": container.status,
+                "image": tags[0] if tags else "unknown",
+                "ports": container.ports or {},
+                "created": container.attrs.get("Created", ""),
+                "name": container.name,
+            }
+    except Exception as e:
+        return _text_error(f"查询会话失败: {e}")
+
+    return _text_ok({"sessions": sessions, "total": len(sessions)})
+
+
+async def handle_session_cleanup(arguments: dict) -> list[TextContent]:
+    """清理指定或所有沙箱会话容器"""
+    sandbox = _get_sandbox()
+    session_id = arguments.get("session_id", "")
+    delete = arguments.get("delete", False)
+
+    if session_id:
+        ok = sandbox.cleanup_session(session_id, delete=delete)
+        return _text_ok({"session_id": session_id, "cleaned": ok})
+    else:
+        from docker.container import ContainerManager
+        mgr = ContainerManager(logger=_get_sandbox().logger)
+        cleaned = []
+        for container in mgr.client.containers.list(
+            filters={"label": "managed_by=container_manager"}
+        ):
+            sid = container.labels.get("session_id", "")
+            if sid:
+                sandbox.cleanup_session(sid, delete=delete)
+                cleaned.append(sid)
+        return _text_ok({"cleaned_sessions": cleaned, "count": len(cleaned)})
+
+
+# ══════════════════════════════════════════════════════════════
 #                  Toolbox 管理 Handler
 # ══════════════════════════════════════════════════════════════
 
@@ -201,7 +255,7 @@ async def handle_trace_stats(arguments: dict) -> list[TextContent]:
 async def handle_toolbox_add_tool(arguments: dict) -> list[TextContent]:
     """向 Toolbox 添加一个新工具"""
     toolbox = _get_toolbox()
-    from anyrun.models import Tool as AnyTool
+    from .models import Tool as AnyTool
 
     name = arguments.get("name", "").strip()
     if not name:
@@ -317,6 +371,8 @@ async def handle_toolbox_tool(tool_name: str, arguments: dict) -> list[TextConte
     """通过 Sandbox 执行 Toolbox 中的注册工具。
 
     注意：_session_id 和 _timeout 是 MCP 层的元参数，不会传给工具代码。
+    默认 session_id 与 sandbox_run 一致（mcp-default），
+    确保 create_file / shell / sandbox_run 共享同一容器和文件系统。
     """
     toolbox = _get_toolbox()
     tool = toolbox.get_tool(tool_name)
@@ -324,11 +380,12 @@ async def handle_toolbox_tool(tool_name: str, arguments: dict) -> list[TextConte
         return _text_error(f"tool '{tool_name}' not found in Toolbox")
 
     try:
-        from anyrun.models import ToolExecutionRequest, ExecutionConfig
+        from .models import ToolExecutionRequest, ExecutionConfig
 
         # 剥离元参数，防止污染工具代码的 execute_tool(**params)
         tool_params = {k: v for k, v in arguments.items() if not k.startswith("_")}
-        session_id = arguments.get("_session_id", "mcp-toolbox")
+        # 统一为 mcp-default，与 sandbox_run 默认 session 一致
+        session_id = arguments.get("_session_id", "mcp-default")
         timeout = arguments.get("_timeout", 60)
 
         sandbox = _get_sandbox()
@@ -539,12 +596,40 @@ TRACE_HANDLERS = {
     "trace_stats": handle_trace_stats,
 }
 
+SESSION_TOOLS = [
+    McpTool(
+        name="session_list",
+        description="列出所有活跃的 Docker 沙箱会话及其拓扑信息。每个 session 对应一个独立的容器，显示容器 ID、状态、镜像和端口映射。",
+        inputSchema={
+            "type": "object",
+            "properties": {},
+        },
+    ),
+    McpTool(
+        name="session_cleanup",
+        description="清理 sandbox 会话容器。指定 session_id 清理单个；不指定则清理所有。 session_id='all' 或空字符串清理所有。 delete=true 时同时删除容器镜像。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "会话 ID，留空清理所有"},
+                "delete": {"type": "boolean", "description": "是否删除容器", "default": False},
+            },
+        },
+    ),
+]
+
+SESSION_HANDLERS = {
+    "session_list": handle_session_list,
+    "session_cleanup": handle_session_cleanup,
+}
+
 # 合并所有内置工具
-BUILTIN_TOOLS = SANDBOX_TOOLS + TRACE_TOOLS + TOOLBOX_MGMT_TOOLS
+BUILTIN_TOOLS = SANDBOX_TOOLS + TRACE_TOOLS + TOOLBOX_MGMT_TOOLS + SESSION_TOOLS
 BUILTIN_HANDLERS = {}
 BUILTIN_HANDLERS.update(SANDBOX_HANDLERS)
 BUILTIN_HANDLERS.update(TRACE_HANDLERS)
 BUILTIN_HANDLERS.update(TOOLBOX_MGMT_HANDLERS)
+BUILTIN_HANDLERS.update(SESSION_HANDLERS)
 BUILTIN_NAMES = {t.name for t in BUILTIN_TOOLS}
 
 
@@ -589,6 +674,140 @@ async def main():
 
         return _text_error(f"unknown tool: {name}")
 
+    @server.list_resources()
+    async def list_resources():
+        """列出可用的 MCP 资源：会话列表和执行轨迹"""
+        from mcp.types import Resource
+        resources = [
+            Resource(
+                uri="anyrun://sessions",
+                name="Active Sessions",
+                description="当前活跃的 Docker 沙箱会话拓扑",
+                mimeType="application/json",
+            ),
+            Resource(
+                uri="anyrun://traces",
+                name="Execution Traces",
+                description="最近 100 条工具执行轨迹",
+                mimeType="application/json",
+            ),
+        ]
+        try:
+            from tracing.collector import get_store
+            store = get_store()
+            traces = store.list(limit=5)
+            for t in traces:
+                tid = t.get("trace_id", "")
+                if tid:
+                    resources.append(Resource(
+                        uri=f"anyrun://traces/{tid}",
+                        name=f"Trace {tid[:8]}...",
+                        description=t.get("error_type", ""),
+                        mimeType="application/json",
+                    ))
+        except Exception:
+            pass
+        return resources
+
+    @server.read_resource()
+    async def read_resource(uri: str):
+        """读取指定资源内容"""
+        from mcp.types import ResourceContents, TextResourceContents
+
+        if uri == "anyrun://sessions":
+            result = await handle_session_list({})
+            text = result[0].text if result else "{}"
+            return [TextResourceContents(uri=uri, text=text, mimeType="application/json")]
+
+        if uri == "anyrun://traces":
+            from tracing.collector import get_store
+            store = get_store()
+            traces = store.list(limit=100)
+            text = json.dumps(traces, ensure_ascii=False, indent=2)
+            return [TextResourceContents(uri=uri, text=text, mimeType="application/json")]
+
+        if uri.startswith("anyrun://traces/"):
+            trace_id = uri.split("/")[-1]
+            from tracing.collector import get_store
+            store = get_store()
+            trace = store.get(trace_id)
+            if trace is None:
+                raise ValueError(f"Trace not found: {trace_id}")
+            text = json.dumps(trace.to_dict(), ensure_ascii=False, indent=2)
+            return [TextResourceContents(uri=uri, text=text, mimeType="application/json")]
+
+        raise ValueError(f"Unknown resource: {uri}")
+
+    @server.list_prompts()
+    async def list_prompts():
+        """列出可用的 MCP 提示词模板"""
+        from mcp.types import Prompt, PromptArgument
+        return [
+            Prompt(
+                name="execute_code",
+                description="在 Docker 沙箱中执行 Python 代码并查看结果",
+                arguments=[
+                    PromptArgument(name="goal", description="执行目标描述", required=True),
+                ],
+            ),
+            Prompt(
+                name="add_tool",
+                description="向 Toolbox 注册一个新的可复用工具",
+                arguments=[
+                    PromptArgument(name="tool_name", description="工具名称", required=True),
+                    PromptArgument(name="description", description="工具功能描述", required=True),
+                ],
+            ),
+            Prompt(
+                name="list_session",
+                description="查看当前沙箱会话拓扑（容器状态）",
+            ),
+        ]
+
+    @server.get_prompt()
+    async def get_prompt(name: str, arguments: dict | None = None):
+        """获取指定提示词的完整内容"""
+        from mcp.types import PromptMessage, TextContent as Ptc
+
+        if name == "execute_code":
+            goal = (arguments or {}).get("goal", "执行代码")
+            return PromptMessage(
+                role="user",
+                content=Ptc(
+                    type="text",
+                    text=f"请用 sandbox_run 工具在 Docker 沙箱中执行以下目标的代码：\n\n{goal}\n\n"
+                         f"1. 先用 shell 确认环境\n2. 用 create_file 写代码文件\n3. 用 sandbox_run 执行\n4. 用 file_read 查看结果",
+                ),
+            )
+
+        if name == "add_tool":
+            tool_name = (arguments or {}).get("tool_name", "")
+            desc = (arguments or {}).get("description", "")
+            return PromptMessage(
+                role="user",
+                content=Ptc(
+                    type="text",
+                    text=f"请用 toolbox_add_tool 注册一个新工具。\n\n"
+                         f"工具名称: {tool_name}\n"
+                         f"功能描述: {desc}\n\n"
+                         f"注意：代码必须包含 def execute_tool(**params) 函数，"
+                         f"返回结果会被 JSON 序列化。",
+                ),
+            )
+
+        if name == "list_session":
+            return PromptMessage(
+                role="user",
+                content=Ptc(
+                    type="text",
+                    text="请用 session_list 工具查看当前 Docker 沙箱的会话拓扑，"
+                         "列出所有活跃容器及其状态。如果 session_list 返回错误，"
+                         "请先检查 Docker 是否运行。",
+                ),
+            )
+
+        raise ValueError(f"Unknown prompt: {name}")
+
     async with stdio_server() as (read, write):
         from anyrun import __version__ as anyrun_version
         await server.run(
@@ -597,7 +816,9 @@ async def main():
             InitializationOptions(
                 server_name="anyrun",
                 server_version=anyrun_version,
-                capabilities=ServerCapabilities(tools=ToolsCapability(listChanged=False)),
+                capabilities=ServerCapabilities(
+                    tools=ToolsCapability(listChanged=False),
+                ),
             ),
         )
 

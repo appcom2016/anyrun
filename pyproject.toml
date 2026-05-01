@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anyrun-agent"
-version = "1.1.1"
+version = "1.2.0"
 description = "Self-evolving execution engine for AI Agents — Docker sandbox + full observability + pattern discovery + autonomous skill evolution"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,8 +37,8 @@ Homepage = "https://github.com/appcom2016/anyrun"
 Repository = "https://github.com/appcom2016/anyrun"
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["anyrun*"]
-exclude = ["skills*", "docs*"]
 
 [tool.setuptools.package-data]
 anyrun = ["data/*.json"]

@@ -3,8 +3,8 @@
 import asyncio
 from typing import Optional
 
-from anyrun.models import ToolExecutionRequest, ExecutionResult
-from anyrun.docker.executor import DockerToolExecutor
+from ..models import ToolExecutionRequest, ExecutionResult
+from .executor import DockerToolExecutor
 
 
 class AsyncDockerToolExecutor:

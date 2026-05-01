@@ -3,9 +3,9 @@
 import os
 from typing import Optional
 
-from anyrun.evolution.lifecycle import SkillLifecycle, SkillStatus
-from anyrun.evolution.tracker import EvolutionTracker, get_tracker
-from anyrun.evolution.repair import AutoRepair, repair_all_decayed
+from .lifecycle import SkillLifecycle, SkillStatus
+from .tracker import EvolutionTracker, get_tracker
+from .repair import AutoRepair, repair_all_decayed
 
 
 class EvolutionEngine:

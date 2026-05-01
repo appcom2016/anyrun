@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from anyrun.tracing.patterns import Pattern, PatternStore
-from anyrun.tracing.store import TraceStore
+from .patterns import Pattern, PatternStore
+from .store import TraceStore
 
 
 # ── SKILL.md 模型 ────────────────────────────────────────
@@ -404,7 +404,7 @@ def register_skill_to_registry(skill: ExtractedSkill, registry=None):
         from anyrun import ToolRegistry
         registry = ToolRegistry()
 
-    from anyrun.models import Skill
+    from ..models import Skill
     skill_path = str(
         Path(os.path.expanduser("~/.anyrun/skills")) / skill.name
     )

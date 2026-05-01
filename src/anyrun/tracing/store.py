@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from anyrun.tracing.models import ExecutionTrace
+from .models import ExecutionTrace
 
 
 class TraceStore:

@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from anyrun.evolution.lifecycle import SkillLifecycle, SkillStatus
+from .lifecycle import SkillLifecycle, SkillStatus
 
 
 class EvolutionTracker:

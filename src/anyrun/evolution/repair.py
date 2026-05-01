@@ -6,8 +6,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from anyrun.evolution.lifecycle import SkillLifecycle, SkillStatus, LifecycleRules
-from anyrun.evolution.tracker import EvolutionTracker
+from .lifecycle import SkillLifecycle, SkillStatus, LifecycleRules
+from .tracker import EvolutionTracker
 
 
 REPAIR_SYSTEM_PROMPT = """你是一个 Skill 修复专家。你的输出必须是**纯 SKILL.md 格式**，不要包含任何解释、问候语或分析过程。
@@ -124,7 +124,7 @@ class AutoRepair:
             return []
 
         # 获取 trace 详情
-        from anyrun.tracing.store import TraceStore
+        from tracing.store import TraceStore
         tstore = TraceStore()
         failures = []
         for row in rows:

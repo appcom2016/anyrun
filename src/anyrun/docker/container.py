@@ -11,7 +11,7 @@ from typing import Any, Optional, Union, Generator
 
 import docker
 
-from anyrun.models import ContainerInfo, ContainerStatus, ExecutionConfig
+from ..models import ContainerInfo, ContainerStatus, ExecutionConfig
 
 
 # ── 流式消息 ────────────────────────────────────────────────
@@ -239,6 +239,16 @@ class ContainerManager:
 
     # ── 内部实现 ───────────────────────────────────────────
 
+    @staticmethod
+    def _base_env() -> dict:
+        """容器执行的基础环境变量，保障 Unicode 和缓冲行为正确"""
+        return {
+            "PYTHONUNBUFFERED": "1",
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PYTHONIOENCODING": "utf-8",
+        }
+
     def _execute_blocking(
         self, container, command: list, workdir: str, timeout: int
     ) -> dict:
@@ -249,7 +259,7 @@ class ContainerManager:
             stdout=True,
             stderr=True,
             demux=True,
-            environment={"PYTHONUNBUFFERED": "1"},
+            environment=self._base_env(),
         )
         stdout, stderr = result.output
         stdout_str = (stdout or b"").decode("utf-8", errors="replace")
@@ -275,7 +285,7 @@ class ContainerManager:
                     container.id,
                     cmd=command,
                     workdir=workdir,
-                    environment={"PYTHONUNBUFFERED": "1"},
+                    environment=self._base_env(),
                 )["Id"]
 
                 stream_data = container.client.api.exec_start(

@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 import yaml
 
-from anyrun.models import Tool, Skill
+from .models import Tool, Skill
 
 
 class Toolbox:
@@ -23,13 +23,14 @@ class Toolbox:
     def __init__(self, storage_path: str = None, skills_dir: str = None):
         if storage_path is None:
             import pathlib
-            pkg_data = pathlib.Path(__file__).parent / "data" / "toolbox.json"
-            if pkg_data.exists():
-                storage_path = str(pkg_data)
-            else:
-                storage_path = "./data/toolbox.json"
+            pkg_dir = pathlib.Path(__file__).resolve().parent
+            pkg_data = pkg_dir / "data" / "toolbox.json"
+            storage_path = str(pkg_data)
+            # 确保 data/ 目录存在
+            pkg_data.parent.mkdir(parents=True, exist_ok=True)
         if skills_dir is None:
-            skills_dir = "./skills"
+            pkg_dir = pathlib.Path(__file__).resolve().parent
+            skills_dir = str(pkg_dir.parent / "skills")
         self.storage_path = storage_path
         self.skills_dir = skills_dir
         self.logger = logging.getLogger(__name__)
@@ -158,7 +159,7 @@ class Toolbox:
                 self._init_default_tools()
 
     def _init_default_tools(self):
-        """初始化默认工具集"""
+        """初始化默认工具集（基础设施工具 + 文件管理工具）"""
         self._tools["shell"] = Tool(
             name="shell",
             description="在 Docker 沙箱中执行 shell 命令",
@@ -170,10 +171,10 @@ class Toolbox:
                 "import subprocess\n"
                 "def execute_tool(command: str, timeout: int = 30):\n"
                 "    try:\n"
-                "        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)\n"
-                '        return r.stdout if r.returncode == 0 else f"错误: {r.stderr}\\n返回码: {r.returncode}"\n'
-                '    except subprocess.TimeoutExpired:\n        return "错误: 命令超时"\n'
-                '    except Exception as e:\n        return f"错误: {str(e)}"\n'
+                "        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout, encoding='utf-8', errors='replace')\n"
+                "        return r.stdout if r.returncode == 0 else f\"错误: {r.stderr}\\n返回码: {r.returncode}\"\n"
+                "    except subprocess.TimeoutExpired:\n        return \"错误: 命令超时\"\n"
+                "    except Exception as e:\n        return f\"错误: {str(e)}\"\n"
             ),
             status="prod",
             version=1,
@@ -189,7 +190,7 @@ class Toolbox:
             },
             code=(
                 "import os\n"
-                "def execute_tool(filename: str, content: str, directory: str = './', mode: str = 'write', encoding: str = 'utf-8'):\n"
+                "def execute_tool(filename: str, content: str, directory: str = '/app/workspace', mode: str = 'write', encoding: str = 'utf-8'):\n"
                 "    os.makedirs(directory, exist_ok=True)\n"
                 "    file_path = os.path.join(directory, filename)\n"
                 '    write_mode = "w" if mode == "write" else "a"\n'
@@ -198,6 +199,107 @@ class Toolbox:
                 "    return file_path\n"
             ),
             status="prod",
+            version=1,
+        )
+        self._tools["file_read"] = Tool(
+            name="file_read",
+            description="读取沙箱工作区中的文件内容",
+            parameters={
+                "path": {"type": "string", "required": True, "description": "文件绝对路径"},
+                "offset": {"type": "integer", "default": 1, "description": "起始行号（1-indexed）"},
+                "limit": {"type": "integer", "default": 500, "description": "最多读取行数"},
+            },
+            code=(
+                "def execute_tool(path: str, offset: int = 1, limit: int = 500):\n"
+                "    import os\n"
+                "    if not os.path.exists(path):\n"
+                '        return f"错误: 文件不存在 {path}"\n'
+                "    with open(path, 'r', encoding='utf-8', errors='replace') as f:\n"
+                "        lines = f.readlines()\n"
+                "    total = len(lines)\n"
+                "    start = max(0, offset - 1)\n"
+                "    end = min(total, start + limit)\n"
+                "    selected = lines[start:end]\n"
+                "    result = ''.join(selected)\n"
+                '    return f"[{start+1}-{end}/{total}]\\n{result}"\n'
+            ),
+            status="prod",
+            version=1,
+        )
+        self._tools["dir_list"] = Tool(
+            name="dir_list",
+            description="列出沙箱工作区中指定目录的内容（文件和子目录）",
+            parameters={
+                "path": {"type": "string", "required": True, "description": "目录绝对路径，默认 /app/workspace"},
+            },
+            code=(
+                "import os\n"
+                "def execute_tool(path: str = '/app/workspace'):\n"
+                "    if not os.path.exists(path):\n"
+                '        return f"错误: 目录不存在 {path}"\n'
+                "    if not os.path.isdir(path):\n"
+                '        return f"错误: {path} 不是目录"\n'
+                "    items = []\n"
+                "    for name in sorted(os.listdir(path)):\n"
+                "        full = os.path.join(path, name)\n"
+                "        if os.path.isdir(full):\n"
+                '            items.append(f"d {name}/")\n'
+                "        elif os.path.islink(full):\n"
+                '            items.append(f"l {name} -> {os.readlink(full)}")\n'
+                "        else:\n"
+                "            size = os.path.getsize(full)\n"
+                '            items.append(f"- {name} ({size}B)")\n'
+                '    return "\\n".join(items) if items else "(空目录)"\n'
+            ),
+            status="prod",
+            version=1,
+        )
+        self._tools["file_search"] = Tool(
+            name="file_search",
+            description="在沙箱工作区中搜索文件内容",
+            parameters={
+                "pattern": {"type": "string", "required": True, "description": "搜索模式（Python re 语法）"},
+                "path": {"type": "string", "default": "/app/workspace", "description": "搜索起始目录"},
+                "file_glob": {"type": "string", "default": "", "description": "文件 glob 过滤，如 *.py"},
+            },
+            code=(
+                "import os, re\n"
+                "def execute_tool(pattern: str, path: str = '/app/workspace', file_glob: str = ''):\n"
+                "    matches = []\n"
+                "    for root, dirs, files in os.walk(path):\n"
+                "        for fname in sorted(files):\n"
+                "            if file_glob:\n"
+                "                import fnmatch\n"
+                "                if not fnmatch.fnmatch(fname, file_glob):\n"
+                "                    continue\n"
+                "            fpath = os.path.join(root, fname)\n"
+                "            try:\n"
+                "                with open(fpath, 'r', encoding='utf-8', errors='replace') as f:\n"
+                "                    for lineno, line in enumerate(f, 1):\n"
+                "                        if re.search(pattern, line):\n"
+                "                            rel = os.path.relpath(fpath, path)\n"
+                "                            matches.append(f'{rel}:{lineno}: {line.rstrip()[:120]}')\n"
+                "            except Exception:\n"
+                "                pass\n"
+                '    return "\\n".join(matches[:200]) if matches else "(无匹配)"\n'
+            ),
+            status="beta",
+            version=1,
+        )
+        self._tools["ensure_dirs"] = Tool(
+            name="ensure_dirs",
+            description="在沙箱工作区中创建目录，多个目录用逗号分隔",
+            parameters={
+                "dirs": {"type": "string", "required": True, "description": "要创建的目录路径，多个用逗号分隔"},
+            },
+            code=(
+                "import os\n"
+                "def execute_tool(dirs: str):\n"
+                "    for d in dirs.split(','):\n"
+                "        os.makedirs(d.strip(), exist_ok=True)\n"
+                '    return f"created: {dirs}"\n'
+            ),
+            status="beta",
             version=1,
         )
         self._save_tools()

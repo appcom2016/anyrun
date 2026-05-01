@@ -5,7 +5,7 @@ from mcp.client.stdio import stdio_client, StdioServerParameters
 
 MCP_CMD = "/usr/local/bin/python3"
 PARAMS = StdioServerParameters(command=MCP_CMD, args=["-m", "anyrun.mcp_server"])
-TOOLBOX = os.path.join(os.path.dirname(__file__), "..", "anyrun", "data", "toolbox.json")
+TOOLBOX = os.path.join(os.path.dirname(__file__), "..", "src", "anyrun", "data", "toolbox.json")
 
 _DOCKER_OK = False
 try:
@@ -86,7 +86,9 @@ EXPECTED = {
     "toolbox_add_tool", "toolbox_get_tool", "toolbox_update_tool_code",
     "toolbox_promote_tool", "toolbox_delete_tool", "toolbox_get_tools_info",
     "toolbox_get_tool_count", "toolbox_get_skill", "toolbox_get_skills_info",
-    "toolbox_get_skills_prompt", "shell", "create_file",
+    "toolbox_get_skills_prompt",
+    "shell", "create_file", "ensure_dirs", "file_read", "dir_list", "file_search",
+    "session_list", "session_cleanup",
 }
 
 class TestDiscovery:
@@ -149,10 +151,13 @@ class TestUpdateTool:
     NEW = 'def execute_tool(x): return x.lower()\n'
     async def test_update(self, client, backup):
         b = await client.call("toolbox_get_tool", {"name": "shell"})
+        original_code = b["code"]
         await client.ok("toolbox_update_tool_code", {"name": "shell", "code": self.NEW})
         a = await client.call("toolbox_get_tool", {"name": "shell"})
         assert a["version"] > b["version"]
         assert "lower" in a["code"]
+        # 恢复原始代码，避免影响后续测试
+        await client.ok("toolbox_update_tool_code", {"name": "shell", "code": original_code})
     async def test_not_found(self, client, backup):
         await client.err("toolbox_update_tool_code", {"name": "nope", "code": self.NEW})
     async def test_no_name(self, client, backup):

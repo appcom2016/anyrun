@@ -4,9 +4,9 @@ import hashlib
 import time
 from typing import Optional
 
-from anyrun.tracing.models import ExecutionTrace
-from anyrun.tracing.store import TraceStore
-from anyrun.tracing.patterns import Pattern
+from .models import ExecutionTrace
+from .store import TraceStore
+from .patterns import Pattern
 
 
 class TraceCollector:
@@ -68,8 +68,8 @@ class TraceCollector:
     def _run_analysis():
         """后台执行模式分析（不阻塞主流程）"""
         try:
-            from anyrun.tracing.collector import get_store
-            from anyrun.tracing.patterns import PatternAnalyzer, PatternStore, Pattern
+            from tracing.collector import get_store
+            from tracing.patterns import PatternAnalyzer, PatternStore, Pattern
             store = get_store()
             analyzer = PatternAnalyzer(store)
             results = analyzer.analyze()

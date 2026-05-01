@@ -11,7 +11,7 @@ import sys
 
 
 def cmd_traces_ls(args):
-    from anyrun.tracing.collector import get_store
+    from tracing.collector import get_store
 
     store = get_store()
     traces = store.list(
@@ -33,7 +33,7 @@ def cmd_traces_ls(args):
 
 
 def cmd_traces_show(args):
-    from anyrun.tracing.collector import get_store
+    from tracing.collector import get_store
 
     store = get_store()
     trace = store.get(args.trace_id)
@@ -61,7 +61,7 @@ def cmd_traces_show(args):
 
 
 def cmd_patterns_ls(args):
-    from anyrun.tracing.patterns import PatternStore
+    from tracing.patterns import PatternStore
 
     store = PatternStore()
     patterns = store.list()
@@ -79,7 +79,7 @@ def cmd_patterns_ls(args):
 
 
 def cmd_patterns_show(args):
-    from anyrun.tracing.patterns import PatternStore
+    from tracing.patterns import PatternStore
 
     store = PatternStore()
     p = store.load(args.pattern_id)
@@ -100,7 +100,7 @@ def cmd_patterns_show(args):
 
 def cmd_evolution_stats(args):
     """显示自进化统计"""
-    from anyrun.evolution import get_tracker
+    from .evolution import get_tracker
     tracker = get_tracker()
     stats = tracker.stats()
 
@@ -121,7 +121,7 @@ def cmd_evolution_stats(args):
 
 def cmd_evolution_repair(args):
     """修复退化的 skill"""
-    from anyrun.evolution import repair_all_decayed
+    from .evolution import repair_all_decayed
     results = repair_all_decayed()
     print(f"Decayed skills: {results['total']}")
     print(f"  Repaired: {results['repaired']}")
@@ -131,8 +131,8 @@ def cmd_evolution_repair(args):
 
 def cmd_extract(args):
     """从模式中自动提取经验"""
-    from anyrun.tracing.patterns import PatternStore
-    from anyrun.tracing.extractor import ExperienceExtractor
+    from tracing.patterns import PatternStore
+    from tracing.extractor import ExperienceExtractor
 
     pstore = PatternStore()
     patterns = pstore.list()
@@ -169,8 +169,8 @@ def cmd_extract(args):
 
 
 def cmd_patterns_analyze(args):
-    from anyrun.tracing.collector import get_store
-    from anyrun.tracing.patterns import PatternAnalyzer, PatternStore
+    from tracing.collector import get_store
+    from tracing.patterns import PatternAnalyzer, PatternStore
 
     store = get_store()
     analyzer = PatternAnalyzer(store)
@@ -200,20 +200,20 @@ def cmd_patterns_analyze(args):
     pstore = PatternStore()
     pstore.clear()
     for p_dict in results["error_clusters"]:
-        from anyrun.tracing.patterns import Pattern
+        from tracing.patterns import Pattern
         pstore.save(Pattern.from_dict(p_dict))
     for p_dict in results["success_paths"]:
-        from anyrun.tracing.patterns import Pattern
+        from tracing.patterns import Pattern
         pstore.save(Pattern.from_dict(p_dict))
     for p_dict in results["anomalies"]:
-        from anyrun.tracing.patterns import Pattern
+        from tracing.patterns import Pattern
         pstore.save(Pattern.from_dict(p_dict))
 
     print(f"\nSaved to ~/.anyrun/traces/patterns/")
 
 
 def cmd_traces_stats(args):
-    from anyrun.tracing.collector import get_store
+    from tracing.collector import get_store
 
     store = get_store()
     stats = store.stats()

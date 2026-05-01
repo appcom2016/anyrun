@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
-from anyrun.tracing.store import TraceStore
+from .store import TraceStore
 
 
 # ── 数据模型 ──────────────────────────────────────────────

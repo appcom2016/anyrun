@@ -9,15 +9,15 @@ import time
 from contextlib import contextmanager
 from typing import Any, Optional
 
-from anyrun.config import SystemConfig
-from anyrun.models import (
+from ..config import SystemConfig
+from ..models import (
     ContainerStatus,
     ExecutionConfig,
     ExecutionResult,
     ToolExecutionRequest,
 )
-from anyrun.docker.container import ContainerManager
-from anyrun.docker.paths import PathMapper
+from .container import ContainerManager
+from .paths import PathMapper
 
 
 class DockerToolExecutor:
@@ -39,10 +39,14 @@ class DockerToolExecutor:
         config: Optional[ExecutionConfig] = None,
         logger: Optional[logging.Logger] = None,
     ):
-        import tempfile as _tmp
+        # 未指定路径时使用稳定目录 ~/.anyrun/workspace/
+        # 确保数据在 MCP Server 重启后依然存在
         self._owns_workspace = host_workspace_root is None
         if host_workspace_root is None:
-            host_workspace_root = _tmp.mkdtemp(prefix="anyrun_")
+            import pathlib
+            stable_dir = pathlib.Path.home() / ".anyrun" / "workspace"
+            stable_dir.mkdir(parents=True, exist_ok=True)
+            host_workspace_root = str(stable_dir)
         self.host_workspace_root = host_workspace_root
 
         self.logger = logger or logging.getLogger(__name__)
@@ -117,7 +121,7 @@ class DockerToolExecutor:
             # 6. 采集执行轨迹
             trace_id = ""
             try:
-                from anyrun.tracing.collector import get_collector
+                from tracing.collector import get_collector
                 collector = get_collector()
                 trace = collector.collect(
                     session_id=sid,
@@ -140,7 +144,7 @@ class DockerToolExecutor:
             # 7. 自进化追踪
             if skill_name:
                 try:
-                    from anyrun.evolution import record_skill_run
+                    from ..evolution import record_skill_run
                     record_skill_run(skill_name, result.success, sid, trace_id)
                 except Exception:
                     pass
