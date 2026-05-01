@@ -9,7 +9,7 @@ import uuid
 class ExecutionTrace:
     """单次沙箱执行的完整记录"""
 
-    trace_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    trace_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     session_id: str = "default"
     tool_name: str = "sandbox.run"
 

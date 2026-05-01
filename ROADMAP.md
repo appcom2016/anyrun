@@ -129,6 +129,23 @@ auto_extracted → beta ──(20次成功 + 3个session)──→ prod
 
 ## Phase 4：集体学习网络（计划中）
 
+### v1.3.0 — 稳定性与可用性增强（已完成）
+
+**Bug 修复：**
+- **Import 路径修复**：`executor.py`、`collector.py`、`cli.py` 中的裸 import 改为相对 import，解决 `pip install` 后从项目外调用时的 `ModuleNotFoundError`
+- **数据持久化修复**：`toolbox.json` 默认路径从 site-packages 内改到 `~/.anyrun/data/`，避免 `pip install` 后写入不可变更目录；自动迁移旧数据
+- **重复计算修复**：`TraceStore.stats()` 中 `avg_dur` 被重复 `SELECT` 两次的问题
+- **ID 冲突概率降低**：`trace_id` 从 12 位 hex 扩展到 16 位（冲突概率 2⁻⁴⁸ → 2⁻⁶⁴）
+- **并发安全**：`EvolutionTracker` 添加 `threading.Lock` 保护 `_cache` 字典
+
+**新功能：**
+- **自动数据清理**：轨迹数据超过 10,000 条时自动清理最旧记录（含 JSON 文件），可通过 `anyrun traces cleanup --max N` 手动触发
+- **CLI 增强**：新增 `config`、`version`、`session ls/cleanup`、`traces cleanup`、`--version` 等命令
+
+**文档：**
+- 完整的 README 重构：版本徽章、分类表格、清晰的 CLI 参考、API 参考、变更日志
+- ROADMAP 记录 v1.3.0 变更
+
 **目标**：让 agent 之间共享经验。一个 agent 学到的，所有 agent 受益。
 
 ### 4.1 经验市场

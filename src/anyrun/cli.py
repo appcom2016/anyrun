@@ -1,9 +1,21 @@
 """anyrun CLI — 命令行入口
 
 Usage:
+    anyrun [--version]
+    anyrun config
+    anyrun version
+    anyrun session ls
+    anyrun session cleanup [--session-id SID] [--delete]
     anyrun traces ls [--errors] [--limit N]
     anyrun traces show <trace_id>
     anyrun traces stats
+    anyrun traces cleanup [--max N]
+    anyrun patterns ls
+    anyrun patterns show <pattern_id>
+    anyrun patterns analyze
+    anyrun extract [--pattern-id PID]
+    anyrun evolution stats
+    anyrun evolution repair
 """
 
 import argparse
@@ -11,7 +23,7 @@ import sys
 
 
 def cmd_traces_ls(args):
-    from tracing.collector import get_store
+    from .tracing.collector import get_store
 
     store = get_store()
     traces = store.list(
@@ -33,7 +45,7 @@ def cmd_traces_ls(args):
 
 
 def cmd_traces_show(args):
-    from tracing.collector import get_store
+    from .tracing.collector import get_store
 
     store = get_store()
     trace = store.get(args.trace_id)
@@ -61,7 +73,7 @@ def cmd_traces_show(args):
 
 
 def cmd_patterns_ls(args):
-    from tracing.patterns import PatternStore
+    from .tracing.patterns import PatternStore
 
     store = PatternStore()
     patterns = store.list()
@@ -79,7 +91,7 @@ def cmd_patterns_ls(args):
 
 
 def cmd_patterns_show(args):
-    from tracing.patterns import PatternStore
+    from .tracing.patterns import PatternStore
 
     store = PatternStore()
     p = store.load(args.pattern_id)
@@ -131,8 +143,8 @@ def cmd_evolution_repair(args):
 
 def cmd_extract(args):
     """从模式中自动提取经验"""
-    from tracing.patterns import PatternStore
-    from tracing.extractor import ExperienceExtractor
+    from .tracing.patterns import PatternStore
+    from .tracing.extractor import ExperienceExtractor
 
     pstore = PatternStore()
     patterns = pstore.list()
@@ -169,8 +181,8 @@ def cmd_extract(args):
 
 
 def cmd_patterns_analyze(args):
-    from tracing.collector import get_store
-    from tracing.patterns import PatternAnalyzer, PatternStore
+    from .tracing.collector import get_store
+    from .tracing.patterns import PatternAnalyzer, PatternStore
 
     store = get_store()
     analyzer = PatternAnalyzer(store)
@@ -200,20 +212,20 @@ def cmd_patterns_analyze(args):
     pstore = PatternStore()
     pstore.clear()
     for p_dict in results["error_clusters"]:
-        from tracing.patterns import Pattern
+        from .tracing.patterns import Pattern
         pstore.save(Pattern.from_dict(p_dict))
     for p_dict in results["success_paths"]:
-        from tracing.patterns import Pattern
+        from .tracing.patterns import Pattern
         pstore.save(Pattern.from_dict(p_dict))
     for p_dict in results["anomalies"]:
-        from tracing.patterns import Pattern
+        from .tracing.patterns import Pattern
         pstore.save(Pattern.from_dict(p_dict))
 
     print(f"\nSaved to ~/.anyrun/traces/patterns/")
 
 
 def cmd_traces_stats(args):
-    from tracing.collector import get_store
+    from .tracing.collector import get_store
 
     store = get_store()
     stats = store.stats()
@@ -236,9 +248,100 @@ def cmd_traces_stats(args):
             print(f"  {s['session_id']}: {s['traces']} traces")
 
 
+def cmd_traces_cleanup(args):
+    """手动触发 trace 清理"""
+    from .tracing.collector import get_store
+    store = get_store()
+    deleted = store.cleanup(max_traces=args.max_traces)
+    print(f"Cleaned up {deleted} old traces (keeping newest {args.max_traces})")
+
+
+def cmd_config(args):
+    """显示 anyrun 配置信息"""
+    import pathlib
+    print("=== anyrun Configuration ===")
+    print(f"Home dir:       {pathlib.Path.home() / '.anyrun'}")
+    print(f"Traces dir:     {pathlib.Path.home() / '.anyrun' / 'traces'}")
+    print(f"Evolution DB:   {pathlib.Path.home() / '.anyrun' / 'evolution' / 'evolution.db'}")
+    print(f"Skills dir:     {pathlib.Path.home() / '.anyrun' / 'skills'}")
+    print(f"Toolbox data:   {pathlib.Path.home() / '.anyrun' / 'data' / 'toolbox.json'}")
+    print(f"Docker image:   python:3.12-slim")
+    print(f"Trace limit:    {getattr(args, 'max_traces', 10000)} (auto-cleanup)")
+    print()
+
+
+def cmd_session_ls(args):
+    """列出所有 Docker 会话容器"""
+    try:
+        from .docker.container import ContainerManager
+        mgr = ContainerManager()
+        for c in mgr.client.containers.list(all=True, filters={"label": "managed_by=container_manager"}):
+            labels = c.labels
+            sid = labels.get("session_id", "?")
+            status = c.status
+            img = c.image.tags[0] if c.image.tags else "?"
+            ports = c.ports or {}
+            print(f"  {c.short_id}  {status:<10} session={sid:<12} image={img}")
+            if ports:
+                for host_port, container_ports in ports.items():
+                    if container_ports:
+                        for mapping in container_ports:
+                            print(f"    Port: {mapping.get('HostIp', '0.0.0.0')}:{mapping.get('HostPort', '?')} -> {host_port}")
+    except Exception as e:
+        print(f"Error listing sessions: {e}")
+
+
+def cmd_session_cleanup(args):
+    """清理 Docker 会话"""
+    from .docker.container import ContainerManager
+    mgr = ContainerManager()
+    count = 0
+    for c in mgr.client.containers.list(all=True, filters={"label": "managed_by=container_manager"}):
+        try:
+            sid = c.labels.get("session_id", "?")
+            if args.session_id and sid != args.session_id:
+                continue
+            if args.delete:
+                c.remove(force=True)
+                print(f"  Deleted container {c.short_id} (session={sid})")
+            else:
+                c.stop(timeout=5)
+                print(f"  Stopped container {c.short_id} (session={sid})")
+            count += 1
+        except Exception as e:
+            print(f"  Error: {e}")
+    if count == 0:
+        print("No matching sessions found.")
+
+
+def cmd_version(args):
+    """显示版本信息"""
+    from . import __version__
+    print(f"anyrun {__version__}")
+    print("Self-evolving execution engine for AI Agents")
+    print("https://github.com/appcom2016/anyrun")
+
+
 def main():
     parser = argparse.ArgumentParser(prog="anyrun")
+    parser.add_argument("--version", action="store_true", help="Show version")
     sub = parser.add_subparsers(dest="command")
+
+    # config
+    sub.add_parser("config", help="Show configuration")
+
+    # version
+    sub.add_parser("version", help="Show version")
+
+    # session
+    p_sess = sub.add_parser("session", help="Manage Docker sessions")
+    p_sess_sub = p_sess.add_subparsers(dest="subcommand")
+    p_sess_ls = p_sess_sub.add_parser("ls", help="List active sessions")
+    p_sess_clean = p_sess_sub.add_parser("cleanup", help="Stop/delete sessions")
+    p_sess_clean.add_argument("--session-id", dest="session_id", default="",
+                              help="Only clean specific session")
+    p_sess_clean.add_argument("--delete", action="store_true",
+                              help="Also delete containers")
 
     # traces ls
     p_ls = sub.add_parser("traces", help="List execution traces")
@@ -251,6 +354,9 @@ def main():
     p_show.add_argument("trace_id")
 
     p_stats = p_ls_sub.add_parser("stats", help="Show trace statistics")
+    p_clean = p_ls_sub.add_parser("cleanup", help="Clean up old traces")
+    p_clean.add_argument("--max", dest="max_traces", type=int, default=10000,
+                         help="Max traces to keep (default: 10000)")
 
     # patterns
     p_pat = sub.add_parser("patterns", help="Pattern discovery")
@@ -272,6 +378,10 @@ def main():
 
     args = parser.parse_args()
 
+    if args.version:
+        cmd_version(args)
+        return
+
     if args.command == "traces":
         if args.subcommand == "ls":
             cmd_traces_ls(args)
@@ -279,6 +389,8 @@ def main():
             cmd_traces_show(args)
         elif args.subcommand == "stats":
             cmd_traces_stats(args)
+        elif args.subcommand == "cleanup":
+            cmd_traces_cleanup(args)
         else:
             parser.print_help()
     elif args.command == "patterns":
@@ -297,6 +409,17 @@ def main():
             cmd_evolution_stats(args)
         elif args.subcommand == "repair":
             cmd_evolution_repair(args)
+        else:
+            parser.print_help()
+    elif args.command == "config":
+        cmd_config(args)
+    elif args.command == "version":
+        cmd_version(args)
+    elif args.command == "session":
+        if args.subcommand == "ls":
+            cmd_session_ls(args)
+        elif args.subcommand == "cleanup":
+            cmd_session_cleanup(args)
         else:
             parser.print_help()
     else:

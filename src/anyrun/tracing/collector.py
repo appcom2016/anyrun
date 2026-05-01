@@ -62,14 +62,17 @@ class TraceCollector:
             t = threading.Thread(target=self._run_analysis, daemon=True)
             t.start()
 
+        # 自动清理：每 200 条检查一次，超过 10000 条时清理
+        if count > 0 and count % 200 == 0:
+            self.store.cleanup(max_traces=10000)
+
         return trace
 
     @staticmethod
     def _run_analysis():
         """后台执行模式分析（不阻塞主流程）"""
         try:
-            from tracing.collector import get_store
-            from tracing.patterns import PatternAnalyzer, PatternStore, Pattern
+            from .patterns import PatternAnalyzer, PatternStore, Pattern
             store = get_store()
             analyzer = PatternAnalyzer(store)
             results = analyzer.analyze()

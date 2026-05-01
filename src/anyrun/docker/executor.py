@@ -121,7 +121,7 @@ class DockerToolExecutor:
             # 6. 采集执行轨迹
             trace_id = ""
             try:
-                from tracing.collector import get_collector
+                from ..tracing.collector import get_collector
                 collector = get_collector()
                 trace = collector.collect(
                     session_id=sid,

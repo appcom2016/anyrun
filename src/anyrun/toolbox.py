@@ -21,16 +21,21 @@ class Toolbox:
     """
 
     def __init__(self, storage_path: str = None, skills_dir: str = None):
+        import pathlib
+        _anyrun_home = pathlib.Path.home() / ".anyrun"
+
         if storage_path is None:
-            import pathlib
-            pkg_dir = pathlib.Path(__file__).resolve().parent
-            pkg_data = pkg_dir / "data" / "toolbox.json"
-            storage_path = str(pkg_data)
-            # 确保 data/ 目录存在
-            pkg_data.parent.mkdir(parents=True, exist_ok=True)
+            storage_path = str(_anyrun_home / "data" / "toolbox.json")
+            # 自动迁移旧数据（从包内 data/ 到 ~/.anyrun/）
+            _old_path = pathlib.Path(__file__).resolve().parent / "data" / "toolbox.json"
+            _new_path = pathlib.Path(storage_path)
+            if _old_path.exists() and not _new_path.exists():
+                _new_path.parent.mkdir(parents=True, exist_ok=True)
+                import shutil
+                shutil.copy2(str(_old_path), str(_new_path))
+            _new_path.parent.mkdir(parents=True, exist_ok=True)
         if skills_dir is None:
-            pkg_dir = pathlib.Path(__file__).resolve().parent
-            skills_dir = str(pkg_dir.parent / "skills")
+            skills_dir = str(_anyrun_home / "skills")
         self.storage_path = storage_path
         self.skills_dir = skills_dir
         self.logger = logging.getLogger(__name__)

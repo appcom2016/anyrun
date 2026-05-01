@@ -175,10 +175,6 @@ class TraceStore:
             ).fetchone()[0]
             failed = total - success
 
-            avg_dur = conn.execute(
-                "SELECT AVG(duration_ms) FROM traces"
-            ).fetchone()[0]
-
             top_errors = conn.execute(
                 """SELECT error_type, COUNT(*) as cnt
                    FROM traces WHERE error_type IS NOT NULL
@@ -210,3 +206,25 @@ class TraceStore:
     def count(self) -> int:
         with self._conn() as conn:
             return conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0]
+
+    def cleanup(self, max_traces: int = 10000) -> int:
+        """清理旧 trace，只保留最新的 max_traces 条。返回删除条数。"""
+        with self._conn() as conn:
+            total = conn.execute("SELECT COUNT(*) FROM traces").fetchone()[0]
+            if total <= max_traces:
+                return 0
+            delete_count = total - max_traces
+            # 找出要删除的 trace_id
+            old = conn.execute(
+                "SELECT trace_id, json_path FROM traces ORDER BY start_time ASC LIMIT ?",
+                (delete_count,),
+            ).fetchall()
+            for tid, jpath in old:
+                try:
+                    if os.path.exists(jpath):
+                        os.remove(jpath)
+                except Exception:
+                    pass
+                conn.execute("DELETE FROM traces WHERE trace_id = ?", (tid,))
+            conn.commit()
+            return len(old)

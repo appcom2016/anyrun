@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -21,6 +22,7 @@ class EvolutionTracker:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._cache: dict[str, SkillLifecycle] = {}
+        self._lock = threading.Lock()
         self._load_cache()
 
     def _conn(self):
@@ -91,10 +93,11 @@ class EvolutionTracker:
 
     def get(self, name: str) -> SkillLifecycle:
         """获取或创建 skill 生命周期"""
-        if name not in self._cache:
-            self._cache[name] = SkillLifecycle(name=name)
-            self._persist(self._cache[name])
-        return self._cache[name]
+        with self._lock:
+            if name not in self._cache:
+                self._cache[name] = SkillLifecycle(name=name)
+                self._persist(self._cache[name])
+            return self._cache[name]
 
     def record_run(self, name: str, success: bool, session_id: str = "", trace_id: str = ""):
         """记录一次 skill 使用"""
@@ -132,10 +135,12 @@ class EvolutionTracker:
             conn.commit()
 
     def list_all(self) -> list[SkillLifecycle]:
-        return list(self._cache.values())
+        with self._lock:
+            return list(self._cache.values())
 
     def get_decayed(self) -> list[SkillLifecycle]:
-        return [lc for lc in self._cache.values() if lc.needs_repair()]
+        with self._lock:
+            return [lc for lc in self._cache.values() if lc.needs_repair()]
 
     def stats(self) -> dict:
         all_lc = self.list_all()
