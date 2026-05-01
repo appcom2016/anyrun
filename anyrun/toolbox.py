@@ -131,11 +131,11 @@ class Toolbox:
             ]
 
     def get_skills_prompt(self) -> str:
-        """以 LLM 友好的 YAML 格式返回所有技能信息"""
+        """以 LLM 友好的格式返回所有技能信息"""
         with self._lock:
             lines = []
             for skill in self._skills.values():
-                lines.append(f"name: {skill.name}\n  description: {skill.description}")
+                lines.append(f"- {skill.name}: {skill.description}")
             return "\n".join(lines)
 
     # ── 内部：持久化 ───────────────────────────────────────
@@ -246,5 +246,11 @@ class Toolbox:
                                 )
                                 self._skills[skill.name] = skill
                                 self.logger.info(f"Skill '{skill.name}' 已加载")
+                            else:
+                                self.logger.debug(f"SKILL.md '{item}' frontmatter 不是 dict")
+                        else:
+                            self.logger.debug(f"SKILL.md '{item}' frontmatter 格式不完整")
+                    else:
+                        self.logger.debug(f"SKILL.md '{item}' 缺少 --- frontmatter")
                 except Exception as e:
                     self.logger.error(f"加载 Skill '{item}' 失败: {e}")

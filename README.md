@@ -233,20 +233,85 @@ Skills tracked: 1
 
 ## MCP Server
 
-在 Hermes 或 Claude Desktop 中配置：
+anyrun 自带 MCP 服务器，能**动态暴露 Toolbox 中的所有工具**给 Hermes、Claude Desktop 等 MCP 客户端。
+
+### 配置
+
+在 Hermes 的 `~/.hermes/config.yaml` 中：
 
 ```yaml
 mcp_servers:
   anyrun:
-    command: "python3"
+    command: "/usr/local/bin/python3"
     args: ["-m", "anyrun.mcp_server"]
 ```
 
-暴露工具：
-- `sandbox_run` — Docker 沙箱执行代码
+> ⚠️ 使用绝对路径 `/usr/local/bin/python3`，确保 `docker` 和 `mcp` SDK 可用。
+
+### 暴露的工具
+
+MCP Server 会动态暴露三类工具：
+
+**代码执行：**
+- `sandbox_run` — Docker 沙箱执行任意 Python 代码
+
+**轨迹管理：**
 - `trace_list` — 列出执行轨迹
 - `trace_get` — 获取单条轨迹详情
 - `trace_stats` — 执行统计
+
+**Toolbox 管理（工具生命周期）：**
+- `toolbox_add_tool` — 注册新工具（名称 + 参数 Schema + 代码）
+- `toolbox_get_tool` — 获取单个工具详情
+- `toolbox_update_tool_code` — 更新工具代码（自动递增版本）
+- `toolbox_promote_tool` — 将工具从 beta 提升为 prod
+- `toolbox_delete_tool` — 删除工具
+- `toolbox_get_tools_info` — 列出所有工具摘要
+- `toolbox_get_tool_count` — 工具总数
+- `toolbox_get_skill` — 获取技能元数据
+- `toolbox_get_skills_info` — 列出所有技能
+- `toolbox_get_skills_prompt` — 技能信息（LLM 友好格式）
+
+**Toolbox 用户工具（动态注册）：**
+- `shell` — 在 Docker 沙箱中执行 shell 命令
+- `create_file` — 创建/覆盖/追加文本文件
+- 以及任何通过 `ToolRegistry.add_tool()` 添加的自定义工具
+
+Agent 可以这样自我迭代工具：
+
+```
+→ 用 toolbox_get_tools_info 了解现有工具
+→ 用 sandbox_run 调试代码片段
+→ 用 toolbox_add_tool 将常用能力抽象为可复用工具
+→ 用 toolbox_promote_tool 将稳定工具提升为 prod
+→ 用 toolbox_update_tool_code 修复工具 bug
+```
+
+所有新增或更新的工具会在 Hermes 下次启动时（或 MCP 自动重连后）自动生效。
+
+### 技术原理
+
+```
+MCP 客户端 (Hermes)                MCP Server (anyrun.mcp_server)
+      │                                    │
+      │  list_tools()                       │
+      │  ──────────────────────────────────>│
+      │                                    ├─ BUILTIN_TOOLS (sandbox_run, trace_*)
+      │                                    ├─ _get_toolbox().get_tools_info()
+      │                                    │    → shell, create_file, ...
+      │  ←── sandbox_run, trace_*,         │
+      │        shell, create_file, ...     │
+      │                                    │
+      │  call_tool("shell", {command})      │
+      │  ──────────────────────────────────>│
+      │                                    ├─ not in BUILTIN_HANDLERS
+      │                                    ├─ toolbox.get_tool("shell") → found
+      │                                    ├─ Sandbox.execute_tool(request)
+      │                                    │    → 容器内执行 shell 命令
+      │  ←── {success, data, error}        │
+```
+
+核心逻辑：`list_tools()` 读取 `BUILTIN_TOOLS` + 从 `Toolbox` 动态查询，`call_tool()` 按名称分派到内置或 Toolbox 执行器。
 
 ## API 参考
 
